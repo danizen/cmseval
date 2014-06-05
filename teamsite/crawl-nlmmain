@@ -1,0 +1,10 @@
+#!/bin/bash
+wget -np -r -l1 -D www.nlm.nih.gov -U 'CMS Pilot Spider' --spider \
+    http://www.nlm.nih.gov/ >& nlmmain-wget
+wget -np -r -l1 -D www.nlm.nih.gov -U 'CMS Pilot Spider' --spider \
+    http://www.nlm.nih.gov/pubs/techbull/tb.html 1>>nlmmain-wget 2>&1
+grep 'Saving to: ' nlmmain-wget |\
+    sed  -e 's,^Saving to: .,http://,' -e 's/.$//' > nlmmain-urls-tmp
+cat nlmmain-urls-tmp must-haves | sort -u > nlmmain-urls
+rm -f nlmmain-urls-tmp
+

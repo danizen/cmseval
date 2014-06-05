@@ -1,0 +1,17 @@
+#!/bin/bash
+wget -np -r -l2 -D www.nlm.nih.gov -U 'CMS Pilot Spider' --spider \
+    http://www.nlm.nih.gov/ >& canreach-wget
+wget -np -r -l2 -D www.nlm.nih.gov -U 'CMS Pilot Spider' --spider \
+    http://www.nlm.nih.gov/pubs/techbull/tb.html 1>>canreach-wget 2>&1
+grep 'Saving to: ' canreach-wget |\
+    sed  -e 's,^Saving to: .,http://,' -e 's,.$,,' |\
+    sort -u > canreach-urls
+for url in `cat must-haves`; do
+    grep -q $url canreach-urls
+    if [ $? -ne 0 ]; then
+        echo $url
+    fi
+done
+
+
+

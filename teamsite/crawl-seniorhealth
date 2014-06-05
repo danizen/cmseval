@@ -1,0 +1,6 @@
+#!/bin/bash
+wget -np -r -l1 -D nihseniorhealth.gov -U 'CMS Pilot Spider' --spider \
+    http://nihseniorhealth.gov/ >& seniorhealth-wget
+grep 'Saving to: ' seniorhealth-wget |\
+    sed  -e 's,^Saving to: .,http://,' -e 's,.$,,' |\
+    sort -u > seniorhealth-urls
