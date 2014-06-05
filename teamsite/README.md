@@ -32,7 +32,7 @@ There may be someway to do just the relative assets, but I wanted to capture CSS
 and anchors that are files.
 
         mkdir assets
-        ./fetchassets -input all-urls
+        ./fetchassets.pl -input all-urls -progress
 
 ## Author ##
 
