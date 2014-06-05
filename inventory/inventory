@@ -1,0 +1,92 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+
+use Getopt::Long;
+
+my $IWBIN = '/usr/nlm/iw/iw-home/bin';
+my $IWEXTATTR = "$IWBIN/iwextattr";
+
+use constant {
+    ATTR_NAME_DCR		=> "TeamSite/Templating/PrimaryDCR",
+    ATTR_NAME_PT		=> "TeamSite/Templating/PrimaryPT",
+    ATTR_NAME_DCR_DOCTYPE 	=> "TeamSite/Templating/DCR/Type",
+    ATTR_NAME_DOCTYPE 		=> "TeamSite/Templating/PrimaryDocumentType",
+    ATTR_NAME_PRIMARY_OUTPUT 	=> "NLM/Templating/PrimaryOutput",
+    ATTR_NAME_METAFILE 		=> "NLM/MetaData/MetaFile",
+    ATTR_NAME_PERMANENCE 	=> "NLM/Permanence/Rating"
+};
+
+my %mapsite = (
+    'http://nihseniorhealth.gov'	=> '/iwmnt/default/main/nihseniorhealth/STAGING/htdocs',
+    'http://www.nlm.nih.gov'		=> '/iwmnt/default/main/nlm/STAGING/htdocs'
+);
+
+
+sub usage() {
+   print STDERR "Usage: $0 [-in input-path] [-out output-path] [-resolve]\n";
+   exit 1;
+}
+GetOptions("in=s" => \my $inpath,
+	   "resolve" => \my $justresolve,
+           "out=s" => \my $outpath) || &usage;
+
+my $ifh;
+if ($inpath) {
+    open($ifh, "<", $inpath) or die "Cannot open `$inpath': $!";
+} else {
+    $ifh = *STDIN;
+}
+
+my $csvfh;
+if ($outpath) {
+    open($csvfh, ">", $outpath) or die "Cannot open `$outpath': $!";
+} else {
+    $csvfh = *STDOUT;
+}
+
+if ($justresolve) {
+    print $csvfh "URL,Path\n";
+} else {
+    print $csvfh "URL,DCR,PT,DocType\n";
+}
+
+while (my $url = <$ifh>) {
+    chomp $url;
+    $url =~ s{\s*$}{};
+    my $path = $url;
+
+    # translate web path to local path
+    while (my ($site, $locpath) = each %mapsite) {
+	if ($path =~ m{^$site}) {
+	    $path =~ s{^$site}{$locpath};
+	    last;
+	}
+    }
+
+    if ($justresolve) {
+	if (-f $path) {
+	   print "$url,$path\n";
+	} else {
+	   print STDERR "$url not found\n";
+	}
+    } elsif ( -f $path) {
+	my ($dcr, $pt, $doctype, $dcrdoctype, $prout, $metafile, $permananence) = ("", "", "", "", "", "", "");
+	open(ATTRS, "$IWEXTATTR -l \"$path\" 2>&1 |") || die "Unable to run ixextattr on $path: $!";
+	while (<ATTRS>) {
+	    chomp;
+            my ($name, $value) = split(/\s*=\s*/);
+	    if ($name eq ATTR_NAME_DCR) {
+	        $dcr = $value;
+            } elsif ($name eq ATTR_NAME_PT) {
+		$pt = $value;
+	    } elsif ($name eq ATTR_NAME_DOCTYPE) {
+		$doctype = $value;
+            }
+        }
+        close ATTRS;
+	print "$url,$dcr,$pt,$doctype\n";
+    } else {
+        print STDERR "error: not found: $url - not found\n";
+    }
+}
