@@ -25,6 +25,15 @@ If that does not work (you have bash/sed but not make?), try:
 
         cat Makefile
 
+## Fetch Assets ##
+
+Another thing you can do is to later go back and get the relative assets for all these pages.
+There may be someway to do just the relative assets, but I wanted to capture CSS sprites,
+and anchors that are files.
+
+        mkdir assets
+        ./fetchassets -input all-urls
+
 ## Author ##
 
 Dan Davis, daniel.davis@nih.gov

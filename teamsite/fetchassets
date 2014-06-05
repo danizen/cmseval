@@ -1,0 +1,125 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+use Getopt::Long;
+use File::Basename qw/dirname basename/;
+use HTML::TreeBuilder;
+use LWP::UserAgent;
+use URI;
+
+
+## Inputs ##
+
+sub usage {
+    print STDERR "Usage: $0 [ -input <path-to-input-file> ] [ -directory <path-to-output-directory> ]\n";
+    print STDERR "    -input defaults to STDIN\n";
+    print STDERR "    -directory defaults to \"assets\", the directory must exist\n";
+    exit 1;
+}
+GetOptions("input=s" => \my $inpath,
+           "directory=s" => \my $outdir) or &usage;
+
+## Validate input file ##
+
+my $infh;
+if ($inpath) {
+   open($infh, "<", $inpath) or die "Cannot read `$inpath': $!\n";
+} else {
+   $infh = *STDIN;
+}
+
+## Validate directory ##
+
+$outdir || ($outdir = "assets");
+(-d $outdir && -w $outdir) || die "Directory `$outdir' must exist and be writeable: $!\n";
+
+
+## Create User Agents ##
+
+my $ua = LWP::UserAgent->new;
+$ua->timeout(5);
+
+## Path to assets that are relative paths ##
+
+my %assets = ();
+
+## Process one url per line of input ##
+
+while (my $url = <$infh>) {
+
+   $url =~ s/#.*$//;    # ignore comments
+   $url =~ s/\s*$//;    # right trim stronger than chomp
+   next if ($url eq '');        # skip blank lines
+   my $baseuri = URI->new($url);
+
+   my $r = $ua->get($url);
+   unless ($r->is_success) {
+       warn "Unable to get `$url`: ".$r->code." - ".$r->message;
+   } elsif ($r->content_type !~ /html/) {
+       warn "content type of `$url' is not html: ".$r->content_type;
+   } else {
+       &handle_html($baseuri, $r);
+   }
+}
+        
+## Handle successfully returned HTML ##
+
+sub handle_html {
+    my ($baseuri, $r) = @_;
+    my $tree = HTML::TreeBuilder->new_from_content($r->content);
+
+    # handle relative anchors
+    #foreach my $a ($tree->find('a')) {
+    #    my $href = $a->attr('href');
+    #    if ($href) {
+    #        my $uri = URI->new($href);
+    #        unless (defined $uri->scheme) {
+    #            print "a.href = $href\n";
+    #        }
+    #    }
+    #}
+
+    # handle relative images
+    foreach my $img ($tree->find('img')) {
+        my $src = $img->attr('src');
+        if ($src) {
+            my $uri = URI->new($src);
+            unless (defined $uri->scheme) {
+                my $abspath= $uri->abs($baseuri)->as_string;
+                $assets{$abspath} = 1;
+            }
+        }
+    }
+
+    # handle relatively linked scripts
+    foreach my $script ($tree->find('script')) {
+        my $src = $script->attr('src');
+        if ($src) {
+            my $uri = URI->new($src);
+            unless (defined $uri->scheme) {
+                my $abspath = $uri->abs($baseuri)->as_string;
+                $assets{$abspath} = 1;
+            }
+        }
+    }
+
+    # handle relatively linked stylesheets
+    foreach my $link ($tree->find('link')) {
+        my $rel = $link->attr('rel');
+        if ('stylesheet' eq $rel) {
+            my $href = $link->attr('href');
+            if ($href) {
+                my $uri = URI->new($href);
+                unless (defined $uri->scheme) {
+                    my $abspath= $uri->abs($baseuri)->as_string;
+                    $assets{$abspath} = 1;
+                }
+            }
+        }
+    }
+}
+
+foreach my $asset (keys(%assets)) {
+   print "$asset\n";
+}
