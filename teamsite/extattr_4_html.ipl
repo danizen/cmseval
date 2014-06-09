@@ -1,0 +1,102 @@
+#!/usr/nlm/iw/iw-home/TeamSite/iw-perl/bin/iwperl -w
+#
+use strict;
+
+my ($DCR, $PT, $DocType, $PrimaryOutput, $DCRs_DocType, $MetaFile, $Permanence);
+my $datacapture;
+my $workarea;
+my $file;
+#my $path_to_file;
+#my $file_wo_path;
+my $file_with_path;
+my $counter = 0;
+
+unless (-e $ARGV[0])
+{  print "I need a filelist of URLs to work on, please\n";
+   exit;
+}
+my $filelist = $ARGV[0];
+open INFILE_FH,"$filelist";
+my @files=<INFILE_FH>;
+close INFILE_FH;
+$filelist = $filelist.".output";
+open(OUTFILE_FH, ">$filelist") || die "Can't open $filelist\n";
+
+foreach my $url (@files)
+{   chomp $url;
+    $file = $url;
+    $file_with_path = "";
+    $workarea = "";
+    $counter++;
+    print "\n";
+    unless ( ($file =~ s#^http://www.nlm.nih.gov/#/iwmnt/default/main/nlm/WORKAREA/johnsonpd/htdocs/#)
+       || ($file =~ s#^http://nihseniorhealth.gov/#/iwmnt/default/main/nihseniorhealth/WORKAREA/johnsonpd/htdocs/#) )
+    {   print "$counter. ERROR: I was expecting ^http://nihseniorhealth.gov/ or ^http://www.nlm.nih.gov/... \n";
+        print "....URL: $file\n";
+        print "....Skipping...\n\n";
+        next;
+    }
+    if (! -e $file)
+    {   print "$counter. ERROR: Converted to TS path OK, but this file isn't there: $file\n";
+        $file = "";
+    }
+    elsif ($file =~ m#^(/iwmnt/.*/WORKAREA/[^/]+)/htdocs/(.*?)([^/]+\.htm[l]?)$#i)
+    {   $workarea = $1;
+#       $path_to_file = $2;
+#       $file_wo_path = $3;
+        $file_with_path = $2.$3;
+        $file_with_path = "htdocs/".$file_with_path;
+    }
+    else
+    {   print "$counter. ERROR: Couldn't decipher workarea of converted file: $file\n";
+        $file = "";
+    }
+
+    ($DCR, $PT, $DocType, $PrimaryOutput, $DCRs_DocType, $MetaFile, $Permanence) = ("", "", "", "", "", "", "");
+    $datacapture = "";
+    if ($file ne "")
+    {
+        open (IWEXTATTR_PH, "/usr/nlm/iw/iw-home/TeamSite/bin/iwextattr -l \"$file\" 2>&1|") || die "Can't do iwextattr on $file - Error: $!\n";
+        while(<IWEXTATTR_PH>)
+        {    chomp;
+             if (/TeamSite\/Templating\/PrimaryDCR\s*=\s*(\S+)/)           ##DCR name
+             {   $DCR = $1;
+             }
+             if (/TeamSite\/Templating\/PrimaryPT\s*=\s*(\S+)/)            ##Pres Template name
+             {   $PT = $1;
+             }
+             if (/TeamSite\/Templating\/PrimaryDocumentType\s*=\s*(\S+)/)  ##DocType of an html
+             {   $DocType = $1;
+             }
+             if (/NLM\/Templating\/PrimaryOutput\s*=\s*(\S+)/)             ##What is the mother html (esp for nihsh)
+             {   $PrimaryOutput = $1;
+             }
+             if (/TeamSite\/Templating\/DCR\/Type\s*=\s*(\S+)/)            ##DocType of a DCR
+             {   $DCRs_DocType = $1;
+             }
+             if (/NLM\/MetaData\/MetaFile\s*=\s*(\S+)/)                    ##nmf of a pdf/doc/xls/ppt
+             {   $MetaFile = $1;
+             }
+             if (/NLM\/Permanence\/Rating\s*=\s*(\S+.*)?\s*$/)             ## permanence
+             {   $Permanence = $1;
+             }
+        }
+        close (IWEXTATTR_PH);
+        if ( ($DCR eq "") && ($PT eq "") && ($DocType eq "") )
+        {   print "$counter. This file is NOT templated: $file\n";
+        }
+        elsif ( ($DCR eq "") || ($PT eq "") || ($DocType eq "") )
+        {   print "$counter. ERROR: This file's attributes are incomplete: $file\n";
+        }
+        else
+        {   print "$counter. File is templated, and all attributes found OK. Will be written to output file\n";
+            $DCR = "templatedata/".$DocType."/data/".$DCR;
+            $DCR =~ s#//#/#; ##Sometimes the ext attr for the DCR or PT can begin with a "/", so fix it retrospectively
+            $PT = "templatedata/".$DocType."/presentation/".$PT;
+            $PT =~ s#//#/#; ##Sometimes the ext attr for the DCR or PT can begin with a "/", so fix it retrospectively
+            $datacapture = "templatedata/".$DocType."/datacapture.cfg";
+        }
+    }
+
+    print OUTFILE_FH "$url,$workarea,$file_with_path,$datacapture,$DCR,$PT\n";
+}
