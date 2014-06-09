@@ -7,15 +7,16 @@ use Getopt::Long;
 # Process arguments
 
 sub usage {
-   print STDERR "Usage: $0 [-input path-to-csv] path-to-output-tar\n";
+   print STDERR "Usage: $0 [-workarea basedir] path-to-input-csv path-to-output-tar\n";
    exit 1;
 }
 
-GetOptions("input=s" => \my $input_path
+GetOptions("workarea=s" => \my $workarea
 	) or &usage;
 
-int(@ARGV) == 1 or &usage;
-my $output_path = $ARGV[0];
+int(@ARGV) == 2 or &usage;
+my $input_path = $ARGV[0];
+my $output_path = $ARGV[1];
 
 
 # Open the input the file, check ability to read 
@@ -51,6 +52,7 @@ while (my $line = <$infh>) {
     chomp $line;
     my ($url, $base, $path, $form, $dcr, $pt) = split(/,/, $line);
     next if $url eq 'URL';
+    next if ($workarea and $base !~ /$workarea/);       # Skip rows that don't match workarea
 
     if ($path eq "") {
 	print STDERR "URL Not Found: $url\n";
