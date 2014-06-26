@@ -10,11 +10,13 @@ use WWW::Mechanize;
 #----------------------------
 
 sub usage {
-    print STDERR "Usage: $0 [ -print perl-regex ] [ -follow perl-regex ] seed\n";
+    print STDERR "Usage: $0 [ -follow perl-regex ] seed\n";
     exit 1;
 }
-GetOptions("print=s" => \my $printre,
-           "follow=s" => \my $followre) || &usage;
+#GetOptions("print=s" => \my $printre,
+#           "follow=s" => \my $followre) || &usage;
+#my $printre = 'www\.nlm\.nih\.gov/news';
+my $followre = 'www\.nlm\.nih\.gov/news.*\.html$';
 int(@ARGV) == 1 or &usage;
 my $seed = $ARGV[0];
 
@@ -22,24 +24,30 @@ my $seed = $ARGV[0];
 #          PROCESSING
 #----------------------------
 
-my $mech = WWW::Mechanize->new;
 my @queue = ( $seed );
-my @done = ( );
+my $all = { $seed => 0 };
 
 while (int(@queue) > 0) {
     my $url = pop @queue;
-    push @done, $url;
 
-    if (!$print or $url =~ /$print/i) {
+    my $mech = WWW::Mechanize->new;
+    eval {
+        $mech->get( $url );
+        $all->{$url} = 1;
+    };
+    if ($all->{$url} == 1) {
         print STDOUT "$url\n";
+    } else {
+        print STDERR "$url not found\n";
     }
-
-    $mech->get( $url );
 
     if ($mech->is_html()) {
         foreach my $link ($mech->links) {
-            if (!$follow or $link->url_abs =~ /$follow/i) {
-                push @queue, $link;
+            if (!$followre or $link->url_abs =~ m{$followre}i) {
+                unless ( defined $all->{$link->url_abs} ) {
+                    push @queue, $link->url_abs;
+                    $all->{$link->url_abs} = 0;
+                }
             }
         }
     }
