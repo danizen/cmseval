@@ -91,21 +91,33 @@ sub process_doc {
         if (! $alias) {
             $alias = $dcr_to_alias->{$name};
         }
-        if ($alias) {
-            &process_dcr($fullpath, $record, $name, $alias);
-        } else {
-            print STDERR qq{Unable to process record with name="$name" from $fullpath - alias not found\n};
+        if (! $alias) {
+            print STDERR qq{Warning - no alias for $fullpath - taking automatic alias\n};
+            $alias = $fullpath;
+            $alias =~ s{^/}{};
+            $alias =~ s{\.dcr$}{};
         }
-        
+        &process_dcr($fullpath, $record, $name, $alias);
     }
 }
 
 sub process_dcr {
     my ($fullpath, $record, $name, $alias) = @_;
 
+    ## 
+    # Some very ticklish rules dealing with the heading
     my $heading = $record->findvalue("item[\@name='heading']/value") or
         return item_not_found($name, $fullpath, "heading");
-    $heading =~ s{^.*<br */>}{};
+    my @lines = split(m{<br */>}, $heading);
+    if (int(@lines) > 1) {
+        $heading = join(' - ', splice(@lines, 1));
+    } else {
+        $heading = $lines[0];
+    }
+    $heading =~ s{&#174([^;])}{&#174;$1}g;
+    $heading =~ s{&#174$}{&#174;}g;
+    $heading =~ s{&reg;}{&#174;}g;
+    $heading =~ s{</?[^>]*>}{}g;
 
     my $mdate = $record->findvalue("item[\@name='permanence']/value/item[\@name='date_modified']/value") or
         return item_not_found($name, $fullpath, "last modification date");
@@ -132,12 +144,14 @@ sub process_dcr {
     my $body;
     foreach my $pagec ($record->findnodes("item[\@name='pagecontent']/value")) {
         foreach my $generic ($pagec->findnodes("item[\@name='Generic']/value")) {
-            foreach my $content ($generic->findnodes("item[\@name='content']/value")) {
-                $body .= $content->to_literal;
+            foreach my $content ($generic->findnodes("item[\@name='content']/value/text()")) {
+                $body .= $content->getData();
             }
         }
     }
     $body or return item_not_found($name, $fullpath, "first column content");
+    my $textnode = XML::LibXML::Text->new($body);
+    $body = $textnode->toString();
 
     print "  <factsheet>\n";
     print "    <source>$fullpath</source>\n";
