@@ -34,6 +34,9 @@ GetOptions("out=s" => \my $out_file) or &usage;
 &usage unless int(@ARGV) == 2;
 my ($in_aliases, $in_dir) = @ARGV;
 
+# remove trailing slash added by <TAB>
+$in_dir =~ s{/$}{};
+
 if ($out_file) {
     open(STDOUT, ">$out_file") or die "Unable to write '$out_file': $!";
 }
@@ -125,12 +128,16 @@ sub process_dcr {
         $heading =~ s{</?[^>]*>}{}g;
     }
 
-    my $mdate = $record->findvalue("item[\@name='permanence']/value/item[\@name='date_modified']/value") or
+    my $mdate = $record->findvalue("item[\@name='permanence']/value/item[\@name='date_modified']/value");
+    unless ($mdate) {
         return item_not_found($name, $fullpath, "last modification date");
+    }
 
     my $header;
     foreach ($record->findnodes("item[\@name='header']/value")) { $header = $_; last; }
-    $header or return item_not_found($name, $fullpath, "header");
+    unless ($header) {
+        return item_not_found($name, $fullpath, "header");
+    }
 
     my ($ui, $class);
     foreach my $meta ($header->findnodes("item[\@name='metadata']/value/item[\@name='name']/value")) {
@@ -145,7 +152,8 @@ sub process_dcr {
     }
 
     # What is below could be combined into a single XPath expression at the expense of defining
-    # what's going on here.  We also validate that all there is Generic content in pagecontent
+    # what's going on here.  This way also validates that all there is Generic content in pagecontent
+
     my $body;
     my $unsupported; 
     foreach my $pageitem ($record->findnodes("item[\@name='pagecontent']/value/item")) {
@@ -163,6 +171,20 @@ sub process_dcr {
     if (! $body) { 
         return item_not_found($name, $fullpath, "generic content");
     }
+
+    # body contains some boiler plate text that we will remove and make automatic, via Custom Content
+    # In a production migrate, probably worth using XML::LibXML to parse this as HTML content, and then 
+    # navigate it that way.  The below is pretty dangerous...
+
+    if ($body =~ m{<p><strong>For information on NLM services, contact}) {
+       # Take prematch
+       $body = $`;
+    } elsif ($body =~ m{<p><strong>A complete list of NLM Fact Sheets}) {
+       # Take prematch
+       $body = $`;
+    }
+
+    # This is needed to again escape the HTML
     my $textnode = XML::LibXML::Text->new($body);
     $body = $textnode->toString();
 
@@ -179,7 +201,7 @@ sub process_dcr {
     print "    <dcrname>$name</dcrname>\n";
     print "    <alias>$alias</alias>\n";
     print "    <title>$heading</title>\n";
-    print "    <mod_date>$mdate</mod_date>\n";
+    print "    <modified>$mdate</modified>\n";
     print "    <ui>$ui</ui>\n" if defined $ui;
     print "    <class>$class</class>\n" if defined $class;
     print "    <body>$body</body>\n";
