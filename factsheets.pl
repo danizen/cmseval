@@ -104,20 +104,26 @@ sub process_doc {
 sub process_dcr {
     my ($fullpath, $record, $name, $alias) = @_;
 
-    ## 
-    # Some very ticklish rules dealing with the heading
-    my $heading = $record->findvalue("item[\@name='heading']/value") or
-        return item_not_found($name, $fullpath, "heading");
-    my @lines = split(m{<br */>}, $heading);
-    if (int(@lines) > 1) {
-        $heading = join(' - ', splice(@lines, 1));
+    # Some very ticklish rules dealing with what will be the page title
+
+    my $heading = $record->findvalue("item[\@name='heading']/value");
+    unless ($heading) {
+        # Take title without " Fact Sheet" suffix if heading is missing
+        $heading = $record->findvalue("item[\@name='title']/value");
+        $heading =~ s/ *Fact Sheet$//g;
     } else {
-        $heading = $lines[0];
+        # The heading is pretty messy...
+        my @lines = split(m{<br */>}, $heading);
+        if (int(@lines) > 1) {
+            $heading = join(' - ', splice(@lines, 1));
+        } else {
+            $heading = $lines[0];
+        }
+        $heading =~ s{&#174([^;])}{&#174;$1}g;
+        $heading =~ s{&#174$}{&#174;}g;
+        $heading =~ s{&reg;}{&#174;}g;
+        $heading =~ s{</?[^>]*>}{}g;
     }
-    $heading =~ s{&#174([^;])}{&#174;$1}g;
-    $heading =~ s{&#174$}{&#174;}g;
-    $heading =~ s{&reg;}{&#174;}g;
-    $heading =~ s{</?[^>]*>}{}g;
 
     my $mdate = $record->findvalue("item[\@name='permanence']/value/item[\@name='date_modified']/value") or
         return item_not_found($name, $fullpath, "last modification date");
@@ -138,20 +144,35 @@ sub process_dcr {
         }
     }
 
-    ## 
     # What is below could be combined into a single XPath expression at the expense of defining
-    # what's going on here.
+    # what's going on here.  We also validate that all there is Generic content in pagecontent
     my $body;
-    foreach my $pagec ($record->findnodes("item[\@name='pagecontent']/value")) {
-        foreach my $generic ($pagec->findnodes("item[\@name='Generic']/value")) {
-            foreach my $content ($generic->findnodes("item[\@name='content']/value/text()")) {
+    my $unsupported; 
+    foreach my $pageitem ($record->findnodes("item[\@name='pagecontent']/value/item")) {
+        if ($pageitem->getAttribute('name') ne 'Generic') {
+            $unsupported = 1;
+        } else {
+            foreach my $content ($pageitem->findnodes("value/item[\@name='content']/value/text()")) {
                 $body .= $content->getData();
             }
         }
     }
-    $body or return item_not_found($name, $fullpath, "first column content");
+    if ($unsupported) { 
+        return item_has_unsupported_content($name, $fullpath, "pagecontent");
+    }
+    if (! $body) { 
+        return item_not_found($name, $fullpath, "generic content");
+    }
     my $textnode = XML::LibXML::Text->new($body);
     $body = $textnode->toString();
+
+    # validate that secondary content is empty
+    foreach my $secondary ($record->findnodes("item[\@name='secondaryContent']/value")) {
+        $unsupported = 1;
+    }
+    if ($unsupported) {
+        return item_has_unsupported_content($name, $fullpath, "secondaryContent");
+    }
 
     print "  <factsheet>\n";
     print "    <source>$fullpath</source>\n";
@@ -167,7 +188,13 @@ sub process_dcr {
 
 sub item_not_found {
     my ($name, $fullpath, $whatsmissing) = @_;
-    print STDERR qq{Unable to process record with name="$name" from $fullpath - $whatsmissing not found\n};
+    print STDERR qq{Unable to process record name="$name" from $fullpath - $whatsmissing not found\n};
+    return undef;
+}
+
+sub item_has_unsupported_content {
+    my ($name, $fullpath, $where) = @_;
+    print STDERR qq{Unable to process record name="$name" from $fullpath - unsupported content in $where\n};
     return undef;
 }
 
