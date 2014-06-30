@@ -26,16 +26,17 @@ use XML::LibXML;
 ##
 # Usage
 sub usage {
-    print STDERR "Usage: $0 [-out output_file] input-aliases-file input-dir\n";
+    print STDERR "Usage: $0 [-out output_file] [-prefix path] input-aliases-file input-dir\n";
     exit 1;
 }
-GetOptions("out=s" => \my $out_file) or &usage;
+GetOptions("prefix=s" => \my $prefix, "idbase=i" => \my $idbase, "out=s" => \my $out_file) or &usage;
 
 &usage unless int(@ARGV) == 2;
 my ($in_aliases, $in_dir) = @ARGV;
 
 # remove trailing slash added by <TAB>
 $in_dir =~ s{/$}{};
+$idbase || ($idbase = 1);
 
 if ($out_file) {
     open(STDOUT, ">$out_file") or die "Unable to write '$out_file': $!";
@@ -133,6 +134,11 @@ sub process_dcr {
         return item_not_found($name, $fullpath, "last modification date");
     }
 
+    my $cdate = $record->findvalue("item[\@name='permanence']/value/item[\@name='date_issued']/value");
+    unless ($cdate) {
+        return item_not_found($name, $fullpath, "date_issued");
+    }
+
     my $header;
     foreach ($record->findnodes("item[\@name='header']/value")) { $header = $_; last; }
     unless ($header) {
@@ -197,15 +203,22 @@ sub process_dcr {
     }
 
     print "  <factsheet>\n";
-    print "    <source>$fullpath</source>\n";
+    if ($prefix) {
+        print "    <source>$prefix/$fullpath</source>\n";
+    } else {
+        print "    <source>$fullpath</source>\n";
+    }
+    print "    <source_id>$idbase</source_id>\n";
     print "    <dcrname>$name</dcrname>\n";
     print "    <alias>$alias</alias>\n";
     print "    <title>$heading</title>\n";
+    print "    <created>$cdate</created>\n";
     print "    <modified>$mdate</modified>\n";
     print "    <ui>$ui</ui>\n" if defined $ui;
     print "    <class>$class</class>\n" if defined $class;
     print "    <body>$body</body>\n";
     print "  </factsheet>\n";
+    $idbase += 1;
 }
 
 sub item_not_found {
