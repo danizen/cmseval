@@ -6,6 +6,7 @@ use Getopt::Long;
 use File::Basename qw/dirname basename/;
 use XML::LibXML;
 use HTML::Tree;
+use Date::Parse;
 use LWP::UserAgent;
 use File::Path qw/make_path/;
 use URI;
@@ -74,7 +75,7 @@ binmode($outfh, ":utf8");
 
 ## Create User Agents ##
 
-my $ua = LWP::UserAgent->new;
+my $ua = LWP::UserAgent->new( max_redirect => 0 );
 $ua->timeout(5);
 
 ## Create the document we are building ##
@@ -159,24 +160,52 @@ sub handle_html {
         return;
     }
 
-    # Transform Body into non-encoded HTML
-    my $body_xml = $body->as_XML();
+    my $body_xml = $body->as_XML();                     # Transform Body into non-encoded HTML
     $body_xml =~ s/^<div id="body">//;
     $body_xml =~ s{</div>$}{};
 
-    # Invariant - we have $source, $alias, $title, $body.
-    # we can save this to the XML we build at the end
+    my $date_changed;                                   # try to get these from <p id="footer-review">
+    my $date_created;
 
-    my $newsref = {
+    my $footer_review = $tree->look_down("id", "footer-review");
+    if ($footer_review) {
+        foreach my $el ($footer_review->content_list) {
+            if (ref($el) eq 'HTML::Element') {
+                if ($el->attr('_tag') eq 'strong') {
+                    my $next_el = $el->right;
+                    if ($next_el) {
+                        my $label = $el->as_text;
+                        if ($label =~ /Last updated/) {
+                            $date_changed = &string_content_to_date($next_el);
+                        } elsif ($label =~ /First published/) {
+                            $date_created = &string_content_to_date($next_el);
+                        }
+                    }
+                }
+            } 
+        }
+    }
+
+    my $ref = {
         source => $source,
         alias => $alias,
         title => $title,
         body => $body_xml
     };
-    if ($item_type) {
-        $newsref->{'type'} = $item_type;
+    $ref->{'type'} = $item_type if $item_type;
+    $ref->{'changed'} = $date_changed if $date_changed;
+    $ref->{'created'} = $date_created if $date_created;
+    &create_news_item($ref);
+}
+
+sub string_content_to_date {
+    my ($content) = @_;
+    my $retval = undef;
+    my ($ss, $hh, $mm, $day, $month, $year, $zone) = strptime($content);
+    if ($day and $month and $year) {
+        $retval = sprintf("%04d-%02d-%02d", 1900+int($year), 1+int($month), int($day));
     }
-    &create_news_item($newsref);
+    return $retval;
 }
 
 sub create_news_item {
